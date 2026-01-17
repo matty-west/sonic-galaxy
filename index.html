@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Matt's Aural Nebula - Experimental v2</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #sidebar {
+            width: 280px;
+            background-color: #1e1e1e;
+            padding: 20px;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            z-index: 10;
+        }
+        #info-panel {
+            width: 320px;
+            background-color: #1e1e1e;
+            padding: 20px;
+            box-shadow: -2px 0 5px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            z-index: 10;
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+        #main {
+            flex-grow: 1;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+        #plot {
+            flex-grow: 1;
+            width: 100%;
+            height: 100%;
+        }
+        h1 { font-size: 1.2rem; margin-top: 0; color: #bb86fc; }
+        h2 { font-size: 1rem; margin-top: 20px; color: #03dac6; }
+        
+        .btn {
+            background-color: #bb86fc;
+            color: #000;
+            border: none;
+            padding: 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 10px;
+            width: 100%;
+        }
+        .btn:hover { background-color: #9965f4; }
+        .btn:disabled { background-color: #555; cursor: not-allowed; }
+        
+        #selected-list {
+            list-style: none;
+            padding: 0;
+            margin-top: 10px;
+            height: 250px;
+            overflow-y: auto;
+            border: 1px solid #333;
+            border-radius: 4px;
+        }
+        #selected-list li {
+            padding: 8px;
+            border-bottom: 1px solid #333;
+            font-size: 0.9rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .remove-btn {
+            color: #cf6679;
+            cursor: pointer;
+            margin-left: 10px;
+        }
+        
+        #results-area {
+            margin-top: 20px;
+            max-height: 40%;
+            overflow-y: auto;
+        }
+        #results-list {
+            list-style: none;
+            padding: 0;
+        }
+        #results-list li {
+            font-size: 0.85rem;
+            padding: 4px 0;
+            border-bottom: 1px solid #333;
+        }
+        
+        #loading {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1.5rem;
+            color: #bb86fc;
+            z-index: 20;
+            background: rgba(18,18,18,0.8);
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        .pipeline-step {
+            margin-bottom: 15px;
+            border-left: 2px solid #bb86fc;
+            padding-left: 10px;
+        }
+        .pipeline-step h3 {
+            font-size: 0.9rem;
+            margin: 0 0 5px 0;
+            color: #bb86fc;
+        }
+        .pipeline-step p {
+            font-size: 0.8rem;
+            margin: 0;
+            color: #ccc;
+            line-height: 1.4;
+        }
+        .manual-section {
+            background: #2a2a2a;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .manual-section h3 {
+            font-size: 0.9rem;
+            margin-top: 0;
+            color: #03dac6;
+        }
+        .manual-section ul {
+            padding-left: 18px;
+            margin: 5px 0;
+        }
+        .manual-section li {
+            font-size: 0.8rem;
+            color: #e0e0e0;
+            margin-bottom: 4px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <h1>Song Recommendations</h1>
+    <p style="font-size: 0.8rem; color: #aaa; margin-top: -10px; line-height: 1.4;">
+        Select multiple "seed" tracks from the nebula. Triangulation calculates the mathematical center of your selection in 200D feature space to find tracks that share the collective "vibe".
+    </p>
+    
+    <h2>Selected Seeds</h2>
+    <ul id="selected-list">
+        <li style="color: #777; text-align: center; padding: 20px;">Click points on the map to select seeds</li>
+    </ul>
+    
+    <button id="triangulate-btn" class="btn" disabled>Triangulate Vibes</button>
+    <button id="clear-btn" class="btn" style="background-color: #333; color: white; margin-top: 5px;">Clear Selection</button>
+    
+    <div id="results-area" style="display:none;">
+        <h2>Result Playlist</h2>
+        <div style="font-size: 0.8rem; color: #aaa; margin-bottom: 5px;" id="result-count"></div>
+        <ul id="results-list"></ul>
+    </div>
+</div>
+
+<div id="main">
+    <div id="plot"></div>
+    <div id="loading">Initialising Nebula...</div>
+</div>
+
+<div id="info-panel">
+    <h1>Project Overview</h1>
+    
+    <div class="manual-section">
+        <h3>How to Explore</h3>
+        <ul>
+            <li><b>Rotate:</b> Left-click and drag</li>
+            <li><b>Zoom:</b> Scroll wheel</li>
+            <li><b>Pan:</b> Right-click and drag</li>
+            <li><b>Select:</b> Click a star to add it to your seeds on the left</li>
+            <li><b>Triangulate:</b> Use the left panel to find new music based on seeds</li>
+        </ul>
+    </div>
+
+    <h2>Research Narrative</h2>
+    
+    <div class="pipeline-step">
+        <h3>1. Ingestion & Analysis</h3>
+        <p>Collection processed via <b>Beets</b> and <b>Essentia</b> to extract high-dimensional acoustic features.</p>
+    </div>
+
+    <div class="pipeline-step">
+        <h3>2. Vector Embedding</h3>
+        <p>Audio features are embedded into <b>ChromaDB</b>, creating a searchable 200D vector space.</p>
+    </div>
+
+    <div class="pipeline-step">
+        <h3>3. Optimization</h3>
+        <p><b>K-Means clustering</b> with <b>Elbow Method</b> optimization to find the natural structure of the library.</p>
+    </div>
+
+    <div class="pipeline-step">
+        <h3>4. Semantic Mapping</h3>
+        <p>Automated sentiment and genre naming of clusters to provide human-readable context.</p>
+    </div>
+
+    <div class="pipeline-step">
+        <h3>5. High-Perf Storage</h3>
+        <p>Efficient delivery using <b>.bin</b> files for the 200D embeddings to ensure fast browser-side math.</p>
+    </div>
+
+    <div class="pipeline-step">
+        <h3>6. Visualization</h3>
+        <p>Interactive 3D rendering powered by <b>Plotly</b>, projecting complex relationships into an explorable galaxy.</p>
+    </div>
+</div>
+
+<script>
+    let metadata = {};
+    let embeddings = null;
+    let selectedIndices = new Set();
+    
+    const plotDiv = document.getElementById('plot');
+    const loadingDiv = document.getElementById('loading');
+    const selectedList = document.getElementById('selected-list');
+    const triangulateBtn = document.getElementById('triangulate-btn');
+    const clearBtn = document.getElementById('clear-btn');
+    const resultsArea = document.getElementById('results-area');
+    const resultsList = document.getElementById('results-list');
+
+    // Initialization
+    async function init() {
+        try {
+            loadingDiv.textContent = "Loading Metadata...";
+            const metaResp = await fetch('metadata.json');
+            metadata = await metaResp.json();
+            
+            loadingDiv.textContent = "Loading Embeddings (2.7MB)...";
+            const embResp = await fetch('embeddings.bin');
+            const embBuffer = await embResp.arrayBuffer();
+            embeddings = new Float32Array(embBuffer);
+            
+            renderPlot();
+            loadingDiv.style.display = 'none';
+        } catch (err) {
+            console.error(err);
+            loadingDiv.textContent = "Error: Use a local server to view this (CORS).";
+        }
+    }
+
+    function renderPlot() {
+        const clusters = {};
+        metadata.items.forEach((item, idx) => {
+            if (!clusters[item.cluster]) {
+                clusters[item.cluster] = { x: [], y: [], z: [], text: [], indices: [], name: item.cluster_name };
+            }
+            clusters[item.cluster].x.push(item.x);
+            clusters[item.cluster].y.push(item.y);
+            clusters[item.cluster].z.push(item.z);
+            clusters[item.cluster].text.push(`${item.artist} - ${item.title} | ${item.cluster_name}`);
+            clusters[item.cluster].indices.push(idx);
+        });
+        
+        const traces = Object.keys(clusters).map(k => ({
+            x: clusters[k].x,
+            y: clusters[k].y,
+            z: clusters[k].z,
+            mode: 'markers',
+            type: 'scatter3d',
+            text: clusters[k].text,
+            customdata: clusters[k].indices,
+            name: clusters[k].name,
+            marker: { size: 5, opacity: 0.8 },
+            hoverinfo: 'text'
+        }));
+
+        const labelTrace = {
+            x: [], y: [], z: [],
+            mode: 'text',
+            type: 'scatter3d',
+            text: [],
+            textposition: 'top center',
+            textfont: { family: 'Segoe UI, sans-serif', size: 14, color: '#ffffff' },
+            showlegend: false,
+            hoverinfo: 'none'
+        };
+
+        Object.keys(clusters).forEach(k => {
+            const c = clusters[k];
+            labelTrace.x.push(c.x.reduce((a, b) => a + b, 0) / c.x.length);
+            labelTrace.y.push(c.y.reduce((a, b) => a + b, 0) / c.y.length);
+            labelTrace.z.push(c.z.reduce((a, b) => a + b, 0) / c.z.length);
+            labelTrace.text.push(`<b>${c.name}</b>`);
+        });
+
+        traces.push(labelTrace);
+        
+        const layout = {
+            hoverlabel: {
+                bgcolor: '#ffffff',
+                font: { color: '#000000' }
+            },
+            title: "Matt's Sonic Galaxy",
+            paper_bgcolor: '#121212',
+            font: { color: '#e0e0e0' },
+            scene: {
+                xaxis: { showgrid: false, zeroline: false, showticklabels: false, title: '' },
+                yaxis: { showgrid: false, zeroline: false, showticklabels: false, title: '' },
+                zaxis: { showgrid: false, zeroline: false, showticklabels: false, title: '' },
+                bgcolor: '#121212',
+                camera: {
+                  eye: {
+                    x: -0.10306015493549094,
+                    y: -0.8330159726583063,
+                    z: 0.9587667402935758
+                  },
+                  center: {
+                    x: 0.05697695390726283,
+                    y: -0.002918088758510152,
+                    z: 0.18306460411897665
+                  }
+                }
+            },
+            margin: { t: 40, l: 0, r: 0, b: 0 },
+            legend: { x: 0, y: 1, itemsizing: 'constant', font: { size: 12 } }
+        };
+
+        Plotly.newPlot(plotDiv, traces, layout, {responsive: true});
+        
+        plotDiv.on('plotly_click', function(data){
+            if (data.points[0].data.mode === 'text') return;
+            const pt = data.points[0];
+            const idx = pt.customdata;
+            toggleSelection(idx);
+        });
+    }
+
+    function toggleSelection(idx) {
+        if (selectedIndices.has(idx)) {
+            selectedIndices.delete(idx);
+        } else {
+            selectedIndices.add(idx);
+        }
+        updateSelectionUI();
+    }
+
+    function updateSelectionUI() {
+        selectedList.innerHTML = '';
+        if (selectedIndices.size === 0) {
+            selectedList.innerHTML = '<li style="color: #777; text-align: center; padding: 20px;">Click points on the map to select seeds</li>';
+            triangulateBtn.disabled = true;
+            return;
+        }
+        triangulateBtn.disabled = false;
+        selectedIndices.forEach(idx => {
+            const item = metadata.items[idx];
+            const li = document.createElement('li');
+            li.innerHTML = `<span><b>${item.artist}</b><br>${item.title}</span><span class="remove-btn" onclick="toggleSelection(${idx})">✕</span>`;
+            selectedList.appendChild(li);
+        });
+    }
+
+    // Vector Math (Cosine Similarity)
+    function getVector(idx) { return embeddings.subarray(idx * metadata.dim, (idx + 1) * metadata.dim); }
+    function cosineSimilarity(v1, v2) {
+        let dot = 0, n1 = 0, n2 = 0;
+        for (let i = 0; i < v1.length; i++) {
+            dot += v1[i] * v2[i]; n1 += v1[i] * v1[i]; n2 += v2[i] * v2[i];
+        }
+        return dot / (Math.sqrt(n1) * Math.sqrt(n2));
+    }
+
+    triangulateBtn.onclick = () => {
+        const dim = metadata.dim;
+        const meanVec = new Float32Array(dim);
+        selectedIndices.forEach(idx => {
+            const vec = getVector(idx);
+            for (let i = 0; i < dim; i++) meanVec[i] += vec[i];
+        });
+        for (let i = 0; i < dim; i++) meanVec[i] /= selectedIndices.size;
+        const scores = [];
+        for (let i = 0; i < metadata.count; i++) {
+            scores.push({ index: i, score: cosineSimilarity(meanVec, getVector(i)) });
+        }
+        scores.sort((a, b) => b.score - a.score);
+        const top50 = scores.slice(0, 50);
+        resultsArea.style.display = 'block';
+        document.getElementById('result-count').textContent = `Found 50 similar vibes`;
+        resultsList.innerHTML = '';
+        top50.forEach(s => {
+            const item = metadata.items[s.index];
+            const li = document.createElement('li');
+            li.textContent = `${item.artist} - ${item.title}`;
+            resultsList.appendChild(li);
+        });
+    };
+
+    clearBtn.onclick = () => {
+        selectedIndices.clear();
+        updateSelectionUI();
+        resultsArea.style.display = 'none';
+    };
+
+    init();
+</script>
+
+</body>
+</html>
